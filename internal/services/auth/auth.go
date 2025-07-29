@@ -19,6 +19,7 @@ type Auth struct {
 	usrProvider UserProvider
 	appProvider AppProvider
 	tokenTTL    time.Duration
+	RefTokenTTL time.Duration
 }
 
 type UserSaver interface {
@@ -43,7 +44,8 @@ func New(
 	userSaver UserSaver,
 	userProvider UserProvider,
 	appProvider AppProvider,
-	tokenTTL time.Duration) *Auth {
+	tokenTTL time.Duration,
+	refTokenTTL time.Duration) *Auth {
 
 	return &Auth{
 		logger:      log,
@@ -51,10 +53,44 @@ func New(
 		usrProvider: userProvider,
 		appProvider: appProvider,
 		tokenTTL:    tokenTTL,
+		RefTokenTTL: refTokenTTL,
 	}
 }
 
-func (a *Auth) Login(ctx context.Context, email, pass string, appID int) (string, error) {
+func (a *Auth) RefreshToken(ctx context.Context, token string, appID int) (string, error) {
+	const op = "auth.RefreshToken"
+	log := a.logger.With(
+		slog.String("op", op),
+	)
+	log.Info("attempting to renew token")
+	app, err := a.appProvider.App(ctx, appID)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+	claims, err := jwt.DecodeTokenWithVerification(token, app.Secret)
+	if err != nil {
+		a.logger.Error("failed to decode token", sl.Err(err))
+		return "", fmt.Errorf("%s: %w", op, jwt.ErrInvalidToken)
+	}
+	user, err := a.usrProvider.User(ctx, claims["email"].(string))
+	if err != nil {
+		if errors.Is(err, storage.ErrUserNotFound) {
+			a.logger.Warn("user not found", sl.Err(err))
+			return "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
+		}
+		a.logger.Error("failed to get user", sl.Err(err))
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	newToken, err := jwt.RenewAccessToken(token, user, app, a.tokenTTL)
+	if err != nil {
+		a.logger.Error("failed to renew token user", sl.Err(err))
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+	return newToken, nil
+}
+
+func (a *Auth) Login(ctx context.Context, email, pass string, appID int) (string, string, error) {
 	const op = "auth.Login"
 	log := a.logger.With(
 		slog.String("op", op),
@@ -64,25 +100,25 @@ func (a *Auth) Login(ctx context.Context, email, pass string, appID int) (string
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			a.logger.Warn("user not found", sl.Err(err))
-			return "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
+			return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 		}
 		a.logger.Error("failed to get user", sl.Err(err))
-		return "", fmt.Errorf("%s: %w", op, err)
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(pass)); err != nil {
-		return "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 	app, err := a.appProvider.App(ctx, appID)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", op, err)
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 	log.Info("user logged successfully")
-	token, err := jwt.NewToken(user, app, a.tokenTTL)
+	token, refToken, err := jwt.GenerateTokenPair(user, app, a.tokenTTL, a.RefTokenTTL)
 	if err != nil {
 		a.logger.Error("failed to generate token", sl.Err(err))
-		return "", fmt.Errorf("%s: %w", op, err)
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
-	return token, nil
+	return token, refToken, nil
 }
 
 func (a *Auth) RegisterNewUser(ctx context.Context, email, pass string) (int64, error) {

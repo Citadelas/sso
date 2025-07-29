@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	ssov1 "github.com/Citadelas/protos/golang/sso"
+	"github.com/muerewa/sso/internal/lib/jwt"
 	"github.com/muerewa/sso/internal/services/auth"
 	"github.com/muerewa/sso/internal/storage"
 	"google.golang.org/grpc"
@@ -12,9 +13,10 @@ import (
 )
 
 type Auth interface {
-	Login(ctx context.Context, email, password string, appID int) (token string, err error)
+	Login(ctx context.Context, email, password string, appID int) (token string, refToken string, err error)
 	RegisterNewUser(ctx context.Context, email, password string) (userID int64, err error)
 	IsAdmin(ctx context.Context, userID int64) (bool, error)
+	RefreshToken(ctx context.Context, token string, appID int) (string, error)
 }
 
 type serverAPI struct {
@@ -28,6 +30,23 @@ func Register(gRPC *grpc.Server, auth Auth) {
 
 const emptyValue = 0
 
+func (s *serverAPI) RefreshToken(ctx context.Context, req *ssov1.RefreshTokenRequest) (*ssov1.RefreshTokenResponse, error) {
+	if req.GetAppId() == emptyValue {
+		return nil, status.Errorf(codes.InvalidArgument, "app_id is required")
+	}
+	if req.GetRefreshToken() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "token is required")
+	}
+	token, err := s.auth.RefreshToken(ctx, req.GetRefreshToken(), int(req.GetAppId()))
+	if err != nil {
+		if errors.Is(err, jwt.ErrInvalidToken) || errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, status.Error(codes.InvalidArgument, "invalid or expired token")
+		}
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+	return &ssov1.RefreshTokenResponse{AccessToken: token}, nil
+}
+
 func (s *serverAPI) Login(ctx context.Context, req *ssov1.LoginRequest) (*ssov1.LoginResponse, error) {
 	if req.GetEmail() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "email is required")
@@ -39,7 +58,7 @@ func (s *serverAPI) Login(ctx context.Context, req *ssov1.LoginRequest) (*ssov1.
 		return nil, status.Errorf(codes.InvalidArgument, "app_id is required")
 	}
 
-	token, err := s.auth.Login(ctx, req.GetEmail(), req.GetPassword(), int(req.GetAppId()))
+	token, refToken, err := s.auth.Login(ctx, req.GetEmail(), req.GetPassword(), int(req.GetAppId()))
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			return nil, status.Error(codes.InvalidArgument, "invalid email or password")
@@ -47,7 +66,7 @@ func (s *serverAPI) Login(ctx context.Context, req *ssov1.LoginRequest) (*ssov1.
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	return &ssov1.LoginResponse{Token: token}, nil
+	return &ssov1.LoginResponse{Token: token, RefreshToken: refToken}, nil
 }
 
 func (s *serverAPI) Register(ctx context.Context, req *ssov1.RegisterRequest) (*ssov1.RegisterResponse, error) {

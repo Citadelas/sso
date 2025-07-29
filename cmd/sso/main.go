@@ -23,7 +23,7 @@ func main() {
 		slog.Any("cfg", cfg),
 		slog.Int("port", cfg.GRPC.Port),
 	)
-	application := app.New(log, cfg.GRPC.Port, cfg.StoragePath, cfg.TokenTTL)
+	application := app.New(log, cfg.GRPC.Port, cfg.StoragePath, cfg.TokenTTL, cfg.TokenRef)
 	go application.GRPCSrv.MustRun()
 
 	stop := make(chan os.Signal, 1)

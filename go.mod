@@ -1,10 +1,12 @@
 module github.com/muerewa/sso
 
-go 1.24.4
+go 1.24.5
 
 require (
+	github.com/Citadelas/protos v1.0.6
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/golang-migrate/migrate/v4 v4.18.3
+	github.com/google/uuid v1.6.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/mattn/go-sqlite3 v1.14.28
 	golang.org/x/crypto v0.39.0
@@ -13,7 +15,6 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
-	github.com/Citadelas/protos/golang/sso v0.0.0-20250727231922-4a101018fb34 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
