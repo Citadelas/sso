@@ -1,0 +1,30 @@
+services:
+  postgres-db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sso
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  db-migrate:
+    image: migrate/migrate
+    command: -path=/migrations -database postgres://postgres:postgres@postgres-db:5432/sso?sslmode=disable up
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      - postgres-db
+
+  task-app:
+    build: .
+    ports:
+      - "44043:44043"
+    environment:
+      - CONFIG_PATH=/app/config/local.yaml
+    depends_on:
+      - db-migrate
+volumes:
+  pgdata:
