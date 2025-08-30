@@ -18,7 +18,7 @@ services:
     depends_on:
       - postgres-db
 
-  task-app:
+  sso-app:
     build: .
     ports:
       - "44043:44043"

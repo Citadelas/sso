@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the Go application
-RUN CGO_ENABLED=0 GOOS=linux go build -o task ./cmd/sso
+RUN CGO_ENABLED=0 GOOS=linux go build -o sso ./cmd/sso
 
 # Use minimal base image
 FROM alpine:latest
@@ -23,7 +23,7 @@ FROM alpine:latest
 WORKDIR /app
 
 # Copy built binary from builder stage
-COPY --from=builder /app/task .
+COPY --from=builder /app/sso .
 
 COPY --from=builder /app/config ./config
 
@@ -33,4 +33,4 @@ EXPOSE 44043
 ENV CONFIG_PATH=/app/config/local.yaml
 
 # Run the executable
-CMD ["./task"]
+CMD ["./sso"]
