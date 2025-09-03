@@ -1,5 +1,5 @@
 services:
-  postgres-db:
+  postgres:
     image: postgres:latest
     environment:
       POSTGRES_USER: postgres
@@ -9,14 +9,24 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - my-proxy-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -p 5432" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   db-migrate:
     image: migrate/migrate
-    command: -path=/migrations -database postgres://postgres:postgres@postgres-db:5432/sso?sslmode=disable up
+    command: -path=/migrations -database postgres://postgres:postgres@postgres:5432/sso?sslmode=disable up
     volumes:
       - ./migrations:/migrations
     depends_on:
-      - postgres-db
+      postgres:
+        condition: service_healthy
+    networks:
+      - my-proxy-net
 
   sso-app:
     build: .
@@ -26,5 +36,11 @@ services:
       - CONFIG_PATH=/app/config/local.yaml
     depends_on:
       - db-migrate
+    networks:
+      - my-proxy-net
+networks:
+  my-proxy-net:
+    name: custom_network
+    external: true
 volumes:
   pgdata:
