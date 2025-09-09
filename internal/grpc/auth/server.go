@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+
 	ssov1 "github.com/Citadelas/protos/golang/sso"
 	"github.com/muerewa/sso/internal/lib/jwt"
 	"github.com/muerewa/sso/internal/services/auth"
@@ -41,6 +42,9 @@ func (s *serverAPI) RefreshToken(ctx context.Context, req *ssov1.RefreshTokenReq
 	if err != nil {
 		if errors.Is(err, jwt.ErrInvalidToken) || errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, status.Error(codes.InvalidArgument, "invalid or expired token")
+		}
+		if errors.Is(err, jwt.ErrWrongType) {
+			return nil, status.Error(codes.InvalidArgument, "token is not a refresh token")
 		}
 		return nil, status.Error(codes.Internal, "internal error")
 	}
